@@ -1,0 +1,73 @@
+from utils.exceptions.ForbiddenException import ForbiddenException
+import sqlite3
+DEFAULT_SESSION = {
+    "debug_mode": False,
+    'admin_mode': False,
+    "account_id": None,
+    "db_connection": None,
+    "email_address": None,
+    "password": None,
+}
+
+SESSION_DATA = DEFAULT_SESSION.copy()
+
+def start_db_connection(db_connection: sqlite3.Connection):
+    global SESSION_DATA
+    SESSION_DATA["db_connection"] = db_connection
+    
+def get_db_connection() -> sqlite3.Connection:
+    global SESSION_DATA
+    return SESSION_DATA.get("db_connection")
+
+def stop_session():
+    global SESSION_DATA
+    SESSION_DATA = DEFAULT_SESSION.copy()
+
+def start_session(**kwargs):
+    global SESSION_DATA
+    SESSION_DATA["account_id"] = kwargs.get("account_id")
+    SESSION_DATA["email_address"] = kwargs.get("email_address")
+    SESSION_DATA["password"] = kwargs.get("password")
+    
+def get_session_data(key=None):
+    global SESSION_DATA
+    if check_admin_mode() and not SESSION_DATA.get("account_id"):
+        raise ForbiddenException("Please login first! ()")
+    if key: return SESSION_DATA.get(key)
+    return {
+        "account_id": SESSION_DATA.get("account_id"),
+        "email_address": SESSION_DATA.get("email_address"),
+        "password": SESSION_DATA.get("password"),
+    }
+
+def check_admin_mode():
+    global SESSION_DATA
+    return SESSION_DATA.get("admin_mode")
+
+def check_debug_mode():
+    global SESSION_DATA
+    return SESSION_DATA.get("debug_mode")
+
+def enable_admin_mode():
+    global SESSION_DATA
+    SESSION_DATA['admin_mode'] = True
+    
+def enable_debug_mode():
+    SESSION_DATA["debug_mode"] = True
+
+
+def validate_session():
+    if (check_admin_mode()):
+        return
+    if get_session_data("email_address") is None or get_session_data("password") is None:
+        raise ForbiddenException("Please login first!")
+    cursor = get_db_connection().cursor()
+    try:
+        with open("./model/sql_scripts/auth/query_user_by_credentials.sql", "r") as f:
+            sql_command = f.read()
+    except:
+        raise OSError("Failed to read sql script")
+    cursor.execute(sql_command, get_session_data())
+    result = cursor.fetchone()
+    if result is None:
+        return ["Invalid session"]
